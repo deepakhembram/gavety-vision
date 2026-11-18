@@ -266,17 +266,64 @@ func visionReply(d interface{ SendText(string) error }, msgType string, res map[
 
 // ─── FUNCTIONS THE REST OF THE AGENT CALLS (same names/signatures as before) ───
 
-// Called by docker_manager.go when the Vision app is installed.
-func startVisionForInstall() error {
+// Called by docker_manager.go when the Vision app is installed (no progress messages).
+func startVisionForInstall() error { return visionInstallRun(nil) }
+
+// Same, but forwards download progress to the dashboard as "docker_install_progress" messages
+// (the same message the generic app installer already sends). docker_manager.go calls this one.
+func startVisionForInstallProgress(d interface{ SendText(string) error }) error {
+	return visionInstallRun(func(msg string) {
+		sendJSON(d, map[string]interface{}{"type": "docker_install_progress", "step": "pulling", "message": msg})
+	})
+}
+
+// visionInstallRun starts the core's install job and waits for it. The Frigate image is large, so
+// this can legitimately take many minutes; progress is reported whenever the message changes.
+func visionInstallRun(report func(string)) error {
 	res, err := visionCall("POST", "/v1/install", nil)
 	if err != nil {
 		return err
 	}
-	if s, _ := res["status"].(string); s != "ok" {
+	if s, _ := res["status"].(string); s == "error" {
 		m, _ := res["message"].(string)
 		return fmt.Errorf("%s", m)
 	}
-	return nil
+	if _, ok := res["started"]; !ok {
+		return nil // an older core ran the whole install inside this one call: nothing to wait for
+	}
+	last, errCount, restarts := "", 0, 0
+	deadline := time.Now().Add(45 * time.Minute)
+	for time.Now().Before(deadline) {
+		time.Sleep(2 * time.Second)
+		st, err := visionCall("GET", "/v1/install/status", nil)
+		if err != nil {
+			if errCount++; errCount > 8 { // the core may be restarting for a moment: tolerate a few failures
+				return err
+			}
+			continue
+		}
+		errCount = 0
+		switch st["state"] {
+		case "done":
+			return nil
+		case "error":
+			m, _ := st["error"].(string)
+			return fmt.Errorf("%s", m)
+		case "idle": // the core restarted and lost the job: start it again (a few times at most)
+			if restarts++; restarts > 3 {
+				return fmt.Errorf("Vision install was interrupted")
+			}
+			if _, err := visionCall("POST", "/v1/install", nil); err != nil {
+				return err
+			}
+			continue
+		}
+		if msg, _ := st["message"].(string); msg != "" && msg != last && report != nil {
+			report(msg)
+			last = msg
+		}
+	}
+	return fmt.Errorf("Vision install is taking too long — check the internet connection and try again")
 }
 
 func handleVisionListDevices(d interface{ SendText(string) error }) {

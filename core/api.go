@@ -64,6 +64,7 @@ func newMux(token string) http.Handler {
 	mux.HandleFunc("DELETE /v1/devices/{id}", a(apiDeleteDevice))
 	mux.HandleFunc("POST /v1/apply", a(apiApply))
 	mux.HandleFunc("POST /v1/install", a(apiInstall))
+	mux.HandleFunc("GET /v1/install/status", a(apiInstallStatus))
 	mux.HandleFunc("GET /v1/settings", a(apiGetSettings))
 	mux.HandleFunc("POST /v1/settings", a(apiSaveSettings))
 	mux.HandleFunc("GET /v1/ai/events", a(apiAIEvents))
@@ -201,13 +202,14 @@ func apiApply(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"status": "ok", "message": "Gavety Vision is ready"})
 }
 
+// apiInstall starts the install job (downloads Frigate, then starts it) and returns at once.
+// Poll /v1/install/status for progress.
 func apiInstall(w http.ResponseWriter, r *http.Request) {
-	if err := startVisionForInstall(); err != nil {
-		writeJSON(w, errBody(err.Error()))
-		return
-	}
-	writeJSON(w, map[string]interface{}{"status": "ok"})
+	started := startInstallJob()
+	writeJSON(w, map[string]interface{}{"status": "ok", "started": started})
 }
+
+func apiInstallStatus(w http.ResponseWriter, r *http.Request) { writeJSON(w, install.snapshot()) }
 
 func apiGetSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"status": "ok", "settings": loadVisionSettings()})

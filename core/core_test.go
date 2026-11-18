@@ -36,6 +36,13 @@ case "$1" in
     esac ;;
   exec)
     echo "  Stream #0:0: Video: hevc (Main), yuv420p(tv), 640x360, 100 tbr" ;;
+  pull)
+    case "$2" in
+      *badpull*) echo "x: boom"; exit 1 ;;
+    esac
+    echo "aaa111: Pulling fs layer"; echo "bbb222: Pulling fs layer"
+    echo "aaa111: Pull complete"; echo "bbb222: Pull complete"
+    echo "Status: Downloaded newer image for $2" ;;
   rm) rm -f "` + dir + `/running" ;;
 esac
 exit 0
