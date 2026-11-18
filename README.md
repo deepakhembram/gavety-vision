@@ -128,3 +128,35 @@ On each catalog refresh (hourly) the bridge pulls the new image **first**, remem
 `/etc/gavety/vision_core_image`, and restarts only the core (Frigate and recordings are not touched).
 A failed pull changes nothing and is retried next hour. Without the field, the built-in default is used.
 The AWS backend needs no code change: it serves the catalog file as-is.
+
+## Hybrid: the same Vision page on the Pi **and** on any PC (standalone mode)
+The core can serve the Vision page itself, with its own password login. It is **off by default**:
+on a Gavety box nothing changes (the dashboard opens the page and the agent forwards commands).
+
+| | Pi / Gavety box | Any PC with Docker |
+|---|---|---|
+| Who serves the page | the agent (dashboard popup) | the core container, `http://<pc>:5170` |
+| Login | dashboard login | own password (first-run setup code, or `GAVETY_UI_PASSWORD`) |
+| Camera/Frigate | same core + Frigate containers | same core + Frigate containers |
+
+**Run on a PC:**
+```
+cd compose
+copy .env.standalone.example .env
+docker compose -f docker-compose.standalone.yml up -d
+docker logs gavety_vision_core        (find the setup code)
+```
+Open `http://localhost:5170`, set a password, add a camera. Live view and recordings go through a read-only,
+allow-listed proxy to Frigate (Frigate's `/api/config` holds camera passwords and is never exposed).
+
+Settings (environment): `GAVETY_UI_ADDR` (enables the page, e.g. `0.0.0.0:5170`), `GAVETY_UI_PASSWORD`,
+`GAVETY_FRIGATE_URL` (default `http://127.0.0.1:5150`; use `http://host.docker.internal:5150` on a PC).
+
+Security notes: the page is plain HTTP, so use it on a trusted LAN or behind a VPN/reverse proxy; passwords are
+stored as PBKDF2-SHA256; sessions are HttpOnly + SameSite=Strict cookies; 5 failed logins/minute/address are
+blocked; the setup code stops a stranger on your LAN from claiming a fresh install.
+
+`vision.html` is ONE file used in both modes (`core/ui/vision.html`; copy it to the agent's `opt/vision.html`).
+
+**Windows note (not verified on a real Docker Desktop):** `DATA_DIR` (default `/srv/gavety`) is a path inside
+Docker's Linux VM, so recordings live in Docker's disk image, not on `C:`. Check free space for long retention.

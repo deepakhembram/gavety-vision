@@ -27,6 +27,7 @@ func main() {
 	stateDir = env("GAVETY_STATE_DIR", stateDir)
 	hddRoot = env("GAVETY_HDD_ROOT", hddRoot)
 	visionFrigateImage = env("GAVETY_FRIGATE_IMAGE", visionFrigateImage)
+	frigateBaseURL = env("GAVETY_FRIGATE_URL", frigateBaseURL)
 
 	addr := env("GAVETY_CORE_ADDR", "127.0.0.1:5160")
 	if host, _, err := net.SplitHostPort(addr); err != nil || !(host == "127.0.0.1" || host == "localhost" || host == "::1") {
@@ -35,6 +36,15 @@ func main() {
 
 	StartVisionStorageEnforcement()
 	StartVisionAI()
+
+	// Optional standalone web UI (any PC with Docker). Off unless GAVETY_UI_ADDR is set.
+	var uiSrv *http.Server
+	if ua := os.Getenv("GAVETY_UI_ADDR"); ua != "" {
+		var err error
+		if uiSrv, err = startUI(ua, token); err != nil {
+			log.Fatalf("cannot start Vision UI: %v", err)
+		}
+	}
 
 	srv := &http.Server{
 		Addr:              addr,
@@ -50,6 +60,9 @@ func main() {
 		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		srv.Shutdown(sctx)
+		if uiSrv != nil {
+			uiSrv.Shutdown(sctx)
+		}
 		bgWG.Wait()
 	}()
 

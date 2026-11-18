@@ -97,7 +97,7 @@ func loadVAIConfig() (VAIConfig, error) {
 		return c, err
 	}
 	if c.FrigateURL == "" {
-		c.FrigateURL = "http://127.0.0.1:5150"
+		c.FrigateURL = frigateBaseURL
 	}
 	if c.IntervalSec <= 0 {
 		c.IntervalSec = 2

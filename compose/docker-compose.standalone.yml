@@ -1,0 +1,26 @@
+# Gavety Vision on ANY PC with Docker (Windows Docker Desktop, Linux, Mac) - no Gavety agent, no Pi.
+#   1. copy .env.standalone.example to .env   (nothing is required; edit if you like)
+#   2. docker compose -f docker-compose.standalone.yml up -d
+#   3. open http://localhost:5170   (first run: setup code is in `docker logs gavety_vision_core`)
+#
+# The core starts Frigate itself (container "gavety_vision", published on :5150) through the Docker socket.
+services:
+  vision:
+    image: ${CORE_IMAGE:-deepakdipu/gavety-vision-core:latest}
+    container_name: gavety_vision_core
+    restart: unless-stopped
+    ports: ["${UI_PORT:-5170}:5170"]
+    extra_hosts: ["host.docker.internal:host-gateway"]   # Linux needs this; Docker Desktop has it built in
+    environment:
+      GAVETY_CORE_TOKEN: ${GAVETY_CORE_TOKEN:-change-me-internal-token-0123456789}   # internal only, API is not published
+      GAVETY_CORE_ADDR: 127.0.0.1:5160
+      GAVETY_UI_ADDR: 0.0.0.0:5170
+      GAVETY_UI_PASSWORD: ${GAVETY_UI_PASSWORD:-}          # leave empty to use the first-run setup code instead
+      GAVETY_FRIGATE_URL: http://host.docker.internal:5150  # Frigate is published on the host by the core
+      GAVETY_STATE_DIR: ${DATA_DIR:-/srv/gavety}/state
+      GAVETY_HDD_ROOT: ${DATA_DIR:-/srv/gavety}/storage
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # SAME path inside and outside: Frigate is started via the host's Docker daemon, which resolves
+      # "-v <path>" on ITS side. On Docker Desktop that is the Docker VM, so DATA_DIR lives there (see README).
+      - ${DATA_DIR:-/srv/gavety}:${DATA_DIR:-/srv/gavety}

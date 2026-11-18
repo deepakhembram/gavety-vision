@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Gavety Vision</title>
+<style>
+  :root {
+    --bg: #0b0d10; --surface: #14171c; --surface2: #1b1f26; --surface3: #20252d;
+    --border: #262b33; --border2: #333a44;
+    --text: #e8eaed; --text2: #a8adb5; --text3: #6b7280;
+    --accent: #3b82f6; --blue-d: #2563eb; --green: #22c55e; --red: #ef4444; --amber: #d97706;
+    --radius: 8px; --radius-lg: 14px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: "SF Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); font-family: var(--font);
+    font-size: 14px; padding: 20px;
+  }
+  h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; }
+  .subtitle { color: var(--text3); font-size: 13px; margin-bottom: 20px; }
+
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .tab {
+    padding: 10px 16px; cursor: pointer; color: var(--text3); font-size: 13.5px; font-weight: 600;
+    border-bottom: 2px solid transparent; user-select: none;
+  }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 20px; margin-bottom: 20px;
+  }
+  .panel-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+
+  .camera-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .camera-tile { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .camera-tile img { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #000; display: block; }
+  .camera-tile-label {
+    padding: 8px 12px; font-size: 12.5px; font-weight: 600; display: flex;
+    justify-content: space-between; align-items: center;
+  }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 5px; }
+
+  .device-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 14px; background: var(--surface2); border-radius: var(--radius);
+    margin-bottom: 8px; border: 1px solid var(--border);
+  }
+  .device-row-info { display: flex; flex-direction: column; gap: 2px; }
+  .device-row-name { font-weight: 600; font-size: 13.5px; }
+  .device-row-detail { font-size: 11.5px; color: var(--text3); font-family: var(--mono); }
+  .device-row-actions { display: flex; gap: 8px; }
+
+  .empty-state { color: var(--text3); font-size: 13px; text-align: center; padding: 24px; grid-column: 1 / -1; }
+
+  .field-row { margin-bottom: 14px; }
+  .field-label {
+    display: block; font-size: 11px; color: var(--text3); text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  input[type=text], input[type=password], input[type=number], select {
+    width: 100%; padding: 9px 12px; background: var(--surface3); border: 1px solid var(--border2);
+    border-radius: var(--radius); color: var(--text); font-family: var(--font); font-size: 13px;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .field-hint { font-size: 11px; color: var(--text3); margin-top: 4px; }
+
+  .field-grid { display: grid; grid-template-columns: 1fr 100px; gap: 12px; }
+  .field-grid-3 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .radio-group { display: flex; gap: 8px; }
+  .radio-option {
+    flex: 1; padding: 10px; text-align: center; background: var(--surface3);
+    border: 1px solid var(--border2); border-radius: var(--radius); cursor: pointer; font-size: 13px;
+  }
+  .radio-option.active { border-color: var(--accent); background: rgba(59,130,246,0.12); color: var(--accent); }
+
+  details.advanced { margin-top: 4px; }
+  details.advanced summary {
+    cursor: pointer; font-size: 12px; color: var(--text3); padding: 6px 0; user-select: none;
+  }
+  details.advanced[open] summary { color: var(--text2); }
+
+  .btn {
+    padding: 10px 18px; border: none; border-radius: var(--radius); font-weight: 600;
+    font-size: 13px; cursor: pointer; font-family: var(--font);
+  }
+  .btn-primary { background: var(--blue-d); color: #fff; }
+  .btn-secondary { background: var(--surface3); color: var(--text2); border: 1px solid var(--border2); }
+  .btn-danger { background: transparent; color: var(--red); border: 1px solid rgba(239,68,68,0.4); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-row { display: flex; gap: 10px; margin-top: 18px; }
+
+  .status-msg {
+    padding: 10px 14px; border-radius: var(--radius); font-size: 12.5px; margin-top: 12px; display: none;
+  }
+  .status-msg.show { display: block; }
+  .status-msg.ok { background: rgba(34,197,94,0.12); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+  .status-msg.error { background: rgba(239,68,68,0.12); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+  .status-msg.pending { background: rgba(217,119,6,0.12); color: var(--amber); border: 1px solid rgba(217,119,6,0.3); }
+
+  .spinner {
+    display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+  <!-- Standalone mode only: sign-in / first-run setup -->
+  <div id="sa-login" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:50;align-items:center;justify-content:center;padding:20px;">
+    <form class="panel" style="width:100%;max-width:360px;margin:0;" onsubmit="standaloneLogin(event)">
+      <div class="panel-title" id="sa-title">Sign in</div>
+      <div class="field-hint" id="sa-hint" style="margin-bottom:12px;"></div>
+      <div id="sa-code-row" style="display:none;margin-bottom:12px;">
+        <label class="field-label">Setup code</label>
+        <input type="text" id="sa-code" autocomplete="off">
+      </div>
+      <label class="field-label">Password</label>
+      <input type="password" id="sa-pass" autocomplete="current-password" style="margin-bottom:14px;">
+      <button class="btn btn-primary" type="submit">Continue</button>
+      <div id="sa-msg" style="margin-top:10px;color:var(--red);font-size:13px;"></div>
+    </form>
+  </div>
+
+  <h1>📹 Gavety Vision <a id="sa-logout" href="#" onclick="standaloneLogout();return false;" style="display:none;float:right;font-size:12px;font-weight:400;color:var(--text3);">Log out</a></h1>
+  <div class="subtitle">Connect your cameras and DVRs — recordings stay on your own storage.</div>
+
+  <div class="tabs">
+    <div class="tab active" id="tab-live" onclick="switchTab('live')">Live View</div>
+    <div class="tab" id="tab-recordings" onclick="switchTab('recordings')">Recordings</div>
+    <div class="tab" id="tab-devices" onclick="switchTab('devices')">Devices</div>
+    <div class="tab" id="tab-settings" onclick="switchTab('settings')">Settings</div>
+  </div>
+
+  <!-- ─── LIVE VIEW ─────────────────────────────────────── -->
+  <div class="tab-panel active" id="panel-live">
+    <div id="camera-grid" class="camera-grid">
+      <div class="empty-state">No cameras yet — add a device under the Devices tab.</div>
+    </div>
+  </div>
+  
+    <!-- ─── RECORDINGS ────────────────────────────────────── -->
+  <div class="tab-panel" id="panel-recordings">
+    <div class="panel" style="padding-bottom:14px;">
+      <div class="field-grid-3 field-row" style="margin-bottom:0;">
+        <div>
+          <label class="field-label">Camera</label>
+          <select id="rec-camera-select" onchange="loadAvailableDates()"></select>
+        </div>
+        <div>
+          <label class="field-label">Date</label>
+          <select id="rec-date-picker" onchange="loadSegmentsForDate()"></select>
+        </div>
+      </div>
+    </div>
+    <div id="events-grid" class="camera-grid"></div>
+    <div id="video-player-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:100; align-items:center; justify-content:center;" onclick="closePlayer(event)">
+        <div style="max-width:600px; width:80%; background:var(--surface); border-radius:var(--radius-lg); overflow:hidden;" onclick="event.stopPropagation()">
+        <video id="rec-video" controls style="width:100%; display:block; background:#000;"></video>
+        <div id="rec-scrubbar" style="height:24px; background:var(--surface3); position:relative; cursor:pointer; margin:0 16px; border-radius:4px; margin-top:10px;" onmousedown="startScrub(event)" onmousemove="showScrubTooltip(event)" onmouseleave="hideScrubTooltip()">
+          <div id="rec-scrub-fill" style="position:absolute; top:0; left:0; height:100%; background:var(--accent); opacity:0.25; border-radius:4px; pointer-events:none;"></div>
+          <div id="rec-scrub-handle" style="position:absolute; top:0; width:3px; height:100%; background:var(--accent); pointer-events:none;"></div>
+          <div id="rec-scrub-tooltip" style="display:none; position:absolute; bottom:calc(100% + 6px); transform:translateX(-50%); background:var(--surface3); border:1px solid var(--border2); padding:3px 7px; border-radius:4px; font-size:11px; white-space:nowrap; pointer-events:none;"></div>
+        </div>
+        <div style="padding:12px 16px; display:flex; justify-content:space-between; align-items:center;">
+          <span id="rec-video-label" style="font-size:12.5px; color:var(--text2);"></span>
+          <button class="btn btn-secondary" onclick="closePlayer()">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── DEVICES ───────────────────────────────────────── -->
+  <div class="tab-panel" id="panel-devices">
+    <div class="panel">
+      <div class="panel-title">Your Devices</div>
+      <div id="device-list"><div class="empty-state">No devices added yet.</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title" id="form-title">Add a Device</div>
+
+      <div class="field-row">
+        <label class="field-label">Device Nickname</label>
+        <input type="text" id="f-nickname" placeholder="e.g. Main DVR, Shop Entrance">
+      </div>
+
+      <div class="field-row">
+        <label class="field-label">Device Type</label>
+        <div class="radio-group">
+          <div class="radio-option active" id="type-single" onclick="setDeviceType('single')">Single Camera</div>
+          <div class="radio-option" id="type-multi" onclick="setDeviceType('multi')">Multi-Channel (DVR/NVR)</div>
+        </div>
+      </div>
+
+      <div class="field-row" id="channels-row" style="display:none;">
+        <label class="field-label">Number of Channels</label>
+        <input type="number" id="f-channels" value="4" min="1" max="32">
+      </div>
+
+      <div class="field-grid field-row">
+        <div>
+          <label class="field-label">IP Address</label>
+          <input type="text" id="f-ip" placeholder="192.168.29.164">
+        </div>
+        <div>
+          <label class="field-label">Port</label>
+          <input type="number" id="f-port" value="554">
+        </div>
+      </div>
+
+      <div class="field-grid-3 field-row">
+        <div>
+          <label class="field-label">Username</label>
+          <input type="text" id="f-username" placeholder="admin">
+        </div>
+        <div>
+          <label class="field-label">Password</label>
+          <input type="password" id="f-password" placeholder="Leave blank to keep existing">
+        </div>
+      </div>
+
+      <details class="advanced field-row">
+        <summary>Advanced — stream path pattern</summary>
+        <div style="margin-top:10px;">
+          <input type="text" id="f-pathpattern" placeholder="/cam/realmonitor?channel={n}&subtype={sub}">
+          <div class="field-hint">
+            Leave blank for the common default. Use <code>{n}</code> for channel number and <code>{sub}</code> for stream quality (0=main, 1=sub).
+            For cameras that don't follow this pattern (e.g. some wireless cameras), enter the exact path — e.g. <code>/live/channel0</code>.
+          </div>
+        </div>
+      </details>
+
+       <div class="field-grid-3 field-row">
+        <div>
+          <label class="field-label">Storage Limit (GB)</label>
+          <input type="number" id="f-storagelimit" value="10" min="1">
+          <div class="field-hint">Oldest recordings from this device are automatically removed once this limit is reached.</div>
+        </div>
+		<div>
+          <label class="field-label">Keep Recordings For (Days)</label>
+          <input type="number" id="f-retentiondays" value="7" min="1">
+          <div class="field-hint">Recordings older than this are automatically deleted.</div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="btn-test" onclick="testConnection()">Test Connection</button>
+        <button class="btn btn-primary" id="btn-save" onclick="saveDevice()">Save Device</button>
+        <button class="btn btn-secondary" id="btn-cancel" style="display:none;" onclick="resetForm()">Cancel Edit</button>
+      </div>
+
+      <div class="status-msg" id="status-msg"></div>
+    </div>
+  </div>
+
+  <!-- ─── SETTINGS ──────────────────────────────────────── -->
+  <div class="tab-panel" id="panel-settings">
+    <div class="panel">
+      <div class="panel-title">Storage Location</div>
+      <div class="field-hint" style="margin-bottom:14px;">
+        All camera recordings are stored in one shared location on your device. Choose which drive to use.
+      </div>
+      <div class="field-row">
+        <label class="field-label">Drive</label>
+        <select id="f-storagedrive"></select>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveSettings()">Save Storage Location</button>
+      </div>
+      <div class="status-msg" id="settings-status-msg"></div>
+    </div>
+  </div>
+
+<script>
+  // ─── Bridge to the dashboard tab that opened this one ──────
+  const VISION_ORIGIN = location.origin;
+  let editingDeviceID = null;
+  let liveRefreshTimer = null;
+  let currentDeviceID = null; // needed to build the appproxy URL for live snapshots
+  let currentLanIP = null;
+  let lastDevices = [];
+
+  // Two ways to run this page:
+  //  - opened from the Gavety dashboard (window.opener): talks to the agent through postMessage
+  //  - STANDALONE (served by the gavety-vision-core container on any PC): talks to the core over HTTP
+  const STANDALONE = !window.opener;
+  if (STANDALONE) currentDeviceID = 'standalone'; // satisfies the "we know how to reach the device" guards below
+
+  window.addEventListener('message', (e) => {
+    if (e.origin !== VISION_ORIGIN) return;
+    const msg = e.data;
+    if (!msg || !msg._gavety_parent) return;
+    dispatchVision(msg);
+  });
+
+  function dispatchVision(msg) {
+    switch (msg.type) {
+      case 'VISION_LIST_RES': renderDeviceList(msg.payload.devices || []); rebuildCameraGrid(msg.payload.devices || []); break;
+      case 'VISION_TEST_RES': handleTestResult(msg.payload); break;
+      case 'VISION_SAVE_RES': handleSaveResult(msg.payload); break;
+      case 'VISION_APPLY_RES': handleApplyResult(msg.payload); break;
+      case 'VISION_DELETE_RES': loadDevices(); break;
+      case 'VISION_SETTINGS_RES': renderSettings(msg.payload); break;
+      case 'VISION_SETTINGS_SAVE_RES': handleSettingsSaveResult(msg.payload); break;
+	  case 'DEVICE_CONTEXT': currentDeviceID = msg.payload.device_id; currentLanIP = msg.payload.lan_ip || null; rebuildCameraGrid(lastDevices); break;
+    }
+  }
+
+  function sendCommand(command, extra) {
+    if (STANDALONE) return standaloneCommand(command, extra || {});
+    if (!window.opener) return;
+    window.opener.postMessage({ _gavety_vision: true, command, ...extra }, VISION_ORIGIN);
+  }
+
+  // ─── Standalone transport (HTTP to the core) ────────────────
+  async function standaloneCall(command, extra) {
+    const r = await fetch('/ui/cmd', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'gavety' },
+      body: JSON.stringify({ command, ...extra }),
+    });
+    if (r.status === 401) { showLogin(); return null; }
+    if (!r.ok) return { type: '', payload: { status: 'error', message: 'Request failed (' + r.status + ')' } };
+    return r.json();
+  }
+
+  async function standaloneCommand(command, extra) {
+    try {
+      const res = await standaloneCall(command, extra);
+      if (!res) return;
+      dispatchVision(res);
+      // The dashboard path sends "saved" and then "applied"; do the same two steps here.
+      if (command === 'vision_save_device' && res.payload && res.payload.status === 'ok') {
+        const applied = await standaloneCall('vision_apply', {});
+        if (applied) dispatchVision(applied);
+      }
+    } catch (e) {
+      dispatchVision({ type: 'VISION_TEST_RES', payload: { status: 'error', message: 'Cannot reach the Vision service.' } });
+    }
+  }
+
+  async function standaloneInit() {
+    const logout = document.getElementById('sa-logout');
+    if (logout) logout.style.display = 'inline-block';
+    let st = { configured: true, authed: false };
+    try { st = await (await fetch('/ui/state', { credentials: 'same-origin' })).json(); } catch (e) {}
+    if (st.authed) { startPage(); return; }
+    showLogin(st.configured);
+  }
+
+  let loginConfigured = true;
+  function showLogin(configured) {
+    if (typeof configured === 'boolean') loginConfigured = configured;
+    document.getElementById('sa-login').style.display = 'flex';
+    document.getElementById('sa-code-row').style.display = loginConfigured ? 'none' : 'block';
+    document.getElementById('sa-title').textContent = loginConfigured ? 'Sign in to Gavety Vision' : 'Set up Gavety Vision';
+    document.getElementById('sa-hint').textContent = loginConfigured ? '' :
+      'First run: enter the setup code shown in the container log (docker logs gavety_vision_core) and choose a password (8+ characters).';
+    document.getElementById('sa-pass').focus();
+  }
+
+  async function standaloneLogin(ev) {
+    ev.preventDefault();
+    const msg = document.getElementById('sa-msg');
+    msg.textContent = '';
+    const body = { password: document.getElementById('sa-pass').value, code: document.getElementById('sa-code').value };
+    const r = await fetch(loginConfigured ? '/ui/login' : '/ui/setup', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    if (r.status === 429) { msg.textContent = 'Too many attempts — wait a minute.'; return; }
+    const j = await r.json().catch(() => ({}));
+    if (j.status === 'ok') {
+      document.getElementById('sa-login').style.display = 'none';
+      document.getElementById('sa-pass').value = '';
+      startPage();
+    } else {
+      msg.textContent = j.message || 'Sign-in failed.';
+    }
+  }
+
+  async function standaloneLogout() {
+    await fetch('/ui/logout', { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'gavety' } });
+    location.reload();
+  }
+
+  if (window.opener) {
+    window.opener.postMessage({ _gavety_vision: true, type: 'LOADED' }, VISION_ORIGIN);
+  }
+
+  // ─── Tabs ───────────────────────────────────────────────────
+  function switchTab(name) {
+    ['live', 'recordings', 'devices', 'settings'].forEach(t => {
+      document.getElementById('tab-' + t).classList.toggle('active', t === name);
+      document.getElementById('panel-' + t).classList.toggle('active', t === name);
+    });
+    if (name === 'live') startLiveRefresh(); else stopLiveRefresh();
+    if (name === 'recordings') populateCameraDropdown();
+  }
+
+  // ─── Live View — auto-refreshing snapshots via the existing
+  // webapp-proxy tunnel (same mechanism already proven for Jellyfin).
+  // Points at Frigate's own snapshot endpoint as a raw image source —
+  // Frigate's own interface itself is never shown. ───────────────────
+  function rebuildCameraGrid(devices) {
+    lastDevices = devices;
+    const grid = document.getElementById('camera-grid');
+    const cameraNames = [];
+    devices.forEach(dev => {
+      const channels = dev.device_type === 'multi' ? (dev.channels || 1) : 1;
+      for (let ch = 1; ch <= channels; ch++) {
+        cameraNames.push({
+          id: `${dev.id}_ch${ch}`,
+          label: channels > 1 ? `${dev.nickname} — Ch ${ch}` : dev.nickname,
+        });
+      }
+    });
+
+    if (!cameraNames.length) {
+      grid.innerHTML = '<div class="empty-state">No cameras yet — add a device under the Devices tab.</div>';
+      return;
+    }
+
+    grid.innerHTML = cameraNames.map(cam => `
+      <div class="camera-tile">
+        <img id="snap-${cam.id}" src="" alt="${escapeHtml(cam.label)}">
+        <div class="camera-tile-label">
+          <span>${escapeHtml(cam.label)}</span>
+          <span><span class="live-dot"></span>Live</span>
+        </div>
+      </div>
+    `).join('');
+
+    // Same guard as startLiveRefresh — the device list often arrives
+    // (especially on LAN) well before DEVICE_CONTEXT does, so an
+    // unconditional call here was the actual remaining source of the
+    // flash-then-broken-until-refresh symptom.
+    if (currentDeviceID || currentLanIP) {
+      refreshSnapshots();
+    }
+  }
+
+   function snapshotURL(cameraID) {
+    if (STANDALONE) return `/frigate/api/${cameraID}/latest.jpg?t=${Date.now()}`;
+    if (currentLanIP) {
+      // On the same network as the Pi — no tunnel needed, straight to
+      // Frigate's own snapshot port directly.
+      return `http://${currentLanIP}:5150/api/${cameraID}/latest.jpg?t=${Date.now()}`;
+    }
+    if (!currentDeviceID) return '';
+    return `/appproxy/${currentDeviceID}/vision/api/${cameraID}/latest.jpg?t=${Date.now()}`;
+  }
+
+  function refreshSnapshots() {
+    lastDevices.forEach(dev => {
+      const channels = dev.device_type === 'multi' ? (dev.channels || 1) : 1;
+      for (let ch = 1; ch <= channels; ch++) {
+        const camID = `${dev.id}_ch${ch}`;
+        const img = document.getElementById('snap-' + camID);
+        if (!img) continue;
+        // Preload into a detached Image() first — swapping a visible
+        // <img>'s src directly always blanks it immediately while the
+        // new one downloads, which is exactly what was causing the
+        // appear-then-disappear flicker every refresh cycle. Only the
+        // already-loaded, ready frame ever gets shown, so the visible
+        // element itself is never cleared.
+        const preload = new Image();
+        preload.onload = () => { img.src = preload.src; };
+        preload.src = snapshotURL(camID);
+      }
+    });
+  }
+
+   function startLiveRefresh() {
+    stopLiveRefresh();
+    // Don't fire the very first attempt until we actually know how to
+    // reach the device (currentDeviceID for remote, currentLanIP for
+    // LAN) — DEVICE_CONTEXT arrives asynchronously, shortly after this
+    // runs, so an immediate first attempt can briefly flash a broken
+    // image before ever having a real URL to use.
+    if (currentDeviceID || currentLanIP) {
+      refreshSnapshots();
+    }
+    liveRefreshTimer = setInterval(refreshSnapshots, 1500);
+  }
+  function stopLiveRefresh() {
+    if (liveRefreshTimer) clearInterval(liveRefreshTimer);
+    liveRefreshTimer = null;
+  }
+
+  // ─── Device list ────────────────────────────────────────────
+  function loadDevices() { sendCommand('vision_list_devices'); }
+
+  function renderDeviceList(devices) {
+    const list = document.getElementById('device-list');
+    if (!devices.length) {
+      list.innerHTML = '<div class="empty-state">No devices added yet.</div>';
+      return;
+    }
+    list.innerHTML = devices.map(dev => `
+      <div class="device-row">
+        <div class="device-row-info">
+          <span class="device-row-name">${escapeHtml(dev.nickname || 'Unnamed device')}</span>
+          <span class="device-row-detail">${escapeHtml(dev.ip)}:${dev.port} · ${dev.device_type === 'multi' ? dev.channels + ' channels' : '1 camera'}</span>
+        </div>
+        <div class="device-row-actions">
+          <button class="btn btn-secondary" onclick='editDevice(${JSON.stringify(dev)})'>Edit</button>
+          <button class="btn btn-danger" onclick="deleteDevice('${dev.id}')">Remove</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+  }
+
+  function deleteDevice(deviceID) {
+    if (!confirm('Remove this device? Its cameras will stop recording.')) return;
+    sendCommand('vision_delete_device', { device_id: deviceID });
+  }
+
+  // ─── Form state ─────────────────────────────────────────────
+  function setDeviceType(type) {
+    document.getElementById('type-single').classList.toggle('active', type === 'single');
+    document.getElementById('type-multi').classList.toggle('active', type === 'multi');
+    document.getElementById('channels-row').style.display = type === 'multi' ? 'block' : 'none';
+  }
+
+  function getDeviceType() {
+    return document.getElementById('type-multi').classList.contains('active') ? 'multi' : 'single';
+  }
+
+  function collectFormDevice() {
+    return {
+      id: editingDeviceID || '',
+      nickname: document.getElementById('f-nickname').value.trim(),
+      ip: document.getElementById('f-ip').value.trim(),
+      port: parseInt(document.getElementById('f-port').value) || 554,
+      username: document.getElementById('f-username').value.trim(),
+      password: document.getElementById('f-password').value,
+      device_type: getDeviceType(),
+      channels: parseInt(document.getElementById('f-channels').value) || 1,
+      stream_path_pattern: document.getElementById('f-pathpattern').value.trim(),
+      storage_limit_gb: parseInt(document.getElementById('f-storagelimit').value) || 10,
+	  retention_days: parseInt(document.getElementById('f-retentiondays').value) || 7,
+    };
+  }
+
+  function validateForm(dev) {
+    if (!dev.nickname) return 'Please enter a nickname for this device.';
+    if (!dev.ip) return 'Please enter the IP address.';
+    if (!dev.username) return 'Please enter the username.';
+    if (!editingDeviceID && !dev.password) return 'Please enter the password.';
+    return null;
+  }
+
+  function showStatus(kind, message) {
+    const el = document.getElementById('status-msg');
+    el.className = 'status-msg show ' + kind;
+    el.innerHTML = kind === 'pending' ? `<span class="spinner"></span>${message}` : message;
+  }
+  function clearStatus() {
+    document.getElementById('status-msg').className = 'status-msg';
+  }
+
+  function testConnection() {
+    const dev = collectFormDevice();
+    const err = validateForm(dev);
+    if (err) { showStatus('error', err); return; }
+    document.getElementById('btn-test').disabled = true;
+    showStatus('pending', 'Testing connection...');
+    sendCommand('vision_test_connection', { vision_device: dev });
+  }
+
+  function handleTestResult(payload) {
+    document.getElementById('btn-test').disabled = false;
+    if (payload.status === 'ok') showStatus('ok', '✓ Connection successful — ready to save.');
+    else showStatus('error', '✕ ' + (payload.message || 'Connection failed.'));
+  }
+
+  function saveDevice() {
+    const dev = collectFormDevice();
+    const err = validateForm(dev);
+    if (err) { showStatus('error', err); return; }
+    document.getElementById('btn-save').disabled = true;
+    showStatus('pending', 'Saving device...');
+    sendCommand('vision_save_device', { vision_device: dev });
+  }
+
+  function handleSaveResult(payload) {
+    if (payload.status === 'ok') {
+      showStatus('pending', 'Device saved — applying configuration (this can take up to a minute)...');
+    } else {
+      document.getElementById('btn-save').disabled = false;
+      showStatus('error', '✕ ' + (payload.message || 'Could not save device.'));
+    }
+  }
+
+  function handleApplyResult(payload) {
+    document.getElementById('btn-save').disabled = false;
+    if (payload.status === 'ok') {
+      showStatus('ok', '✓ ' + payload.message);
+      resetForm();
+      loadDevices();
+    } else {
+      showStatus('error', '✕ ' + (payload.message || 'Could not apply configuration.'));
+    }
+  }
+
+  function editDevice(dev) {
+    editingDeviceID = dev.id;
+    document.getElementById('form-title').textContent = 'Edit Device';
+    document.getElementById('f-nickname').value = dev.nickname || '';
+    document.getElementById('f-ip').value = dev.ip || '';
+    document.getElementById('f-port').value = dev.port || 554;
+    document.getElementById('f-username').value = dev.username || '';
+    document.getElementById('f-password').value = '';
+    document.getElementById('f-password').placeholder = 'Leave blank to keep existing password';
+    document.getElementById('f-channels').value = dev.channels || 1;
+    document.getElementById('f-pathpattern').value = dev.stream_path_pattern || '';
+    document.getElementById('f-storagelimit').value = dev.storage_limit_gb || 10;
+	document.getElementById('f-retentiondays').value = dev.retention_days || 7;
+    setDeviceType(dev.device_type || 'single');
+    document.getElementById('btn-cancel').style.display = '';
+    clearStatus();
+    switchTab('devices');
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  }
+
+  function resetForm() {
+    editingDeviceID = null;
+    document.getElementById('form-title').textContent = 'Add a Device';
+    document.getElementById('f-nickname').value = '';
+    document.getElementById('f-ip').value = '';
+    document.getElementById('f-port').value = 554;
+    document.getElementById('f-username').value = '';
+    document.getElementById('f-password').value = '';
+    document.getElementById('f-password').placeholder = '';
+    document.getElementById('f-channels').value = 4;
+    document.getElementById('f-pathpattern').value = '';
+    document.getElementById('f-storagelimit').value = 10;
+	document.getElementById('f-retentiondays').value = 7;
+    setDeviceType('single');
+    document.getElementById('btn-cancel').style.display = 'none';
+    clearStatus();
+  }
+
+  // ─── Settings ───────────────────────────────────────────────
+  function loadSettings() { sendCommand('vision_get_settings'); }
+
+  function renderSettings(payload) {
+    const select = document.getElementById('f-storagedrive');
+    const drives = payload.available_drives || [];
+    select.innerHTML = drives.map(d =>
+      `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`
+    ).join('');
+    if (payload.settings && payload.settings.storage_drive) {
+      select.value = payload.settings.storage_drive;
+    }
+  }
+
+  function saveSettings() {
+    const drive = document.getElementById('f-storagedrive').value;
+    const el = document.getElementById('settings-status-msg');
+    el.className = 'status-msg show pending';
+    el.innerHTML = '<span class="spinner"></span>Saving...';
+    sendCommand('vision_save_settings', { settings: { storage_drive: drive } });
+  }
+
+  function handleSettingsSaveResult(payload) {
+    const el = document.getElementById('settings-status-msg');
+    if (payload.status === 'ok') {
+      el.className = 'status-msg show ok';
+      el.textContent = '✓ Storage location saved. New recordings will use this location.';
+    } else {
+      el.className = 'status-msg show error';
+      el.textContent = '✕ ' + (payload.message || 'Could not save settings.');
+    }
+  }
+
+  // ─── Recordings — this Frigate build uses continuous 10-second
+  // segments, not curated "events" — /api/events doesn't exist here at
+  // all. Real structure, confirmed directly from Frigate's own
+  // interface tonight: /api/recordings?before=&after= for segment
+  // listings, /api/recordings/summary for which days have footage,
+  // and /api/<camera>/start/<ts>/end/<ts>/clip.mp4 for actual
+  // playback of any time range — all confirmed against Frigate's own
+  // official documentation, not guessed. ──────────────────────────
+  let selectedRecDate = null;
+
+  function visionBaseURL() {
+    if (STANDALONE) return '/frigate';
+    if (currentLanIP) return `http://${currentLanIP}:8080/vision-events-proxy`;
+    if (currentDeviceID) return `/appproxy/${currentDeviceID}/vision`;
+    return null;
+  }
+
+  function populateCameraDropdown() {
+    const select = document.getElementById('rec-camera-select');
+    const cameraNames = [];
+    lastDevices.forEach(dev => {
+      const channels = dev.device_type === 'multi' ? (dev.channels || 1) : 1;
+      for (let ch = 1; ch <= channels; ch++) {
+        cameraNames.push({
+          id: `${dev.id}_ch${ch}`,
+          label: channels > 1 ? `${dev.nickname} — Ch ${ch}` : dev.nickname,
+        });
+      }
+    });
+    const prevValue = select.value;
+    select.innerHTML = cameraNames.map(c => `<option value="${c.id}">${escapeHtml(c.label)}</option>`).join('');
+    if (cameraNames.some(c => c.id === prevValue)) select.value = prevValue;
+    if (cameraNames.length) loadAvailableDates();
+  }
+
+  // Local day boundaries as Unix seconds, matching Frigate's own
+  // before/after params.
+  function dayBounds(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    const start = Math.floor(d.getTime() / 1000);
+    const isToday = dateStr === new Date().toISOString().slice(0, 10) || dateStr === new Date().toLocaleDateString('en-CA');
+    const end = isToday ? Math.floor(Date.now() / 1000) : start + 86400;
+    return { start, end };
+  }
+
+  async function loadAvailableDates() {
+    const base = visionBaseURL();
+    const cameraID = document.getElementById('rec-camera-select').value;
+    const picker = document.getElementById('rec-date-picker');
+    if (!base || !cameraID) return;
+
+    try {
+      const tz = encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone);
+      const res = await fetch(`${base}/api/recordings/summary?cameras=${cameraID}&timezone=${tz}`);
+      const days = await res.json(); // plain object: { "YYYY-MM-DD": true/false, ... }
+      const available = new Set(Object.keys(days || {}).filter(day => days[day]));
+      picker.innerHTML = '';
+      if (!available.size) {
+        document.getElementById('events-grid').innerHTML = '<div class="empty-state">No recordings found for this camera yet.</div>';
+        return;
+      }
+      // Most recent first
+      const sorted = [...available].sort().reverse();
+      sorted.forEach((day, i) => {
+        const opt = document.createElement('option');
+        opt.value = day;
+        opt.textContent = day;
+        picker.appendChild(opt);
+      });
+      selectedRecDate = sorted[0];
+      picker.value = selectedRecDate;
+      loadSegmentsForDate();
+    } catch (err) {
+      document.getElementById('events-grid').innerHTML = `<div class="empty-state">Could not load available dates: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  async function loadSegmentsForDate() {
+    const grid = document.getElementById('events-grid');
+    const base = visionBaseURL();
+    const cameraID = document.getElementById('rec-camera-select').value;
+    selectedRecDate = document.getElementById('rec-date-picker').value;
+    if (!base || !cameraID || !selectedRecDate) return;
+
+    const { start, end } = dayBounds(selectedRecDate);
+    grid.innerHTML = '<div class="empty-state">Loading recordings...</div>';
+    try {
+      const res = await fetch(`${base}/api/${cameraID}/recordings?after=${start}&before=${end}`);
+      const segments = await res.json();
+      if (!Array.isArray(segments) || !segments.length) {
+        grid.innerHTML = '<div class="empty-state">No recordings on this date.</div>';
+        return;
+      }
+
+      // Merge consecutive segments (no real gap between them) into
+      // continuous blocks — much more usable than hundreds of
+      // individual 10-second rows.
+      segments.sort((a, b) => a.start_time - b.start_time);
+      const blocks = [];
+      let current = null;
+      const GAP_TOLERANCE = 3; // seconds — small gaps still count as "continuous"
+      for (const seg of segments) {
+        if (current && seg.start_time - current.end <= GAP_TOLERANCE) {
+          current.end = seg.end_time;
+        } else {
+          current = { start: seg.start_time, end: seg.end_time };
+          blocks.push(current);
+        }
+      }
+
+      grid.innerHTML = blocks.map(b => {
+        const startLabel = new Date(b.start * 1000).toLocaleTimeString();
+        const endLabel = new Date(b.end * 1000).toLocaleTimeString();
+        const durationMin = Math.round((b.end - b.start) / 60);
+        return `
+          <div class="camera-tile" style="cursor:pointer; aspect-ratio:auto;" onclick="playRange(${b.start}, ${b.end}, '${escapeHtml(startLabel)} – ${escapeHtml(endLabel)}', ${b.start}, ${b.end})">
+            <div style="padding:16px; display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:14px; font-weight:600;">${escapeHtml(startLabel)} – ${escapeHtml(endLabel)}</span>
+              <span style="font-size:11.5px; color:var(--text3);">${durationMin < 1 ? '<1' : durationMin} min</span>
+            </div>
+          </div>`;
+      }).join('');
+    } catch (err) {
+      grid.innerHTML = `<div class="empty-state">Could not load recordings: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  ////
+    let scrubBlockStart = null;
+  let scrubBlockEnd = null;
+  let scrubCameraID = null;
+
+  function playRange(startTs, endTs, label, blockStart, blockEnd) {
+    const base = visionBaseURL();
+    const cameraID = document.getElementById('rec-camera-select').value;
+    if (!base) return;
+    const video = document.getElementById('rec-video');
+    video.src = `${base}/api/${cameraID}/start/${startTs}/end/${endTs}/clip.mp4`;
+    document.getElementById('rec-video-label').textContent = label;
+    document.getElementById('video-player-overlay').style.display = 'flex';
+    video.play().catch(() => {});
+
+    // Track the full block's real range separately from the currently
+    // *playing* clip — the scrub bar always represents the whole
+    // original block, even after jumping partway into it, so dragging
+    // still works relative to the true full timeline, not just
+    // whatever's currently loaded.
+    scrubBlockStart = blockStart ?? startTs;
+    scrubBlockEnd = blockEnd ?? endTs;
+    scrubCameraID = cameraID;
+    updateScrubHandle(startTs);
+  }
+
+  function updateScrubHandle(currentTs) {
+    if (scrubBlockStart == null) return;
+    const pct = ((currentTs - scrubBlockStart) / (scrubBlockEnd - scrubBlockStart)) * 100;
+    const clamped = Math.max(0, Math.min(100, pct));
+    document.getElementById('rec-scrub-fill').style.width = clamped + '%';
+    document.getElementById('rec-scrub-handle').style.left = clamped + '%';
+  }
+  
+    function showScrubTooltip(e) {
+    if (scrubBlockStart == null) return;
+    const bar = document.getElementById('rec-scrubbar');
+    const rect = bar.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const targetTs = Math.round(scrubBlockStart + pct * (scrubBlockEnd - scrubBlockStart));
+    const tooltip = document.getElementById('rec-scrub-tooltip');
+    tooltip.textContent = new Date(targetTs * 1000).toLocaleTimeString();
+    tooltip.style.left = (pct * 100) + '%';
+    tooltip.style.display = 'block';
+  }
+
+  function hideScrubTooltip() {
+    document.getElementById('rec-scrub-tooltip').style.display = 'none';
+  }
+
+  function startScrub(e) {
+    seekFromEvent(e);
+    const onMove = (ev) => seekFromEvent(ev);
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
+  function seekFromEvent(e) {
+    if (scrubBlockStart == null) return;
+    const bar = document.getElementById('rec-scrubbar');
+    const rect = bar.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const targetTs = Math.round(scrubBlockStart + pct * (scrubBlockEnd - scrubBlockStart));
+    updateScrubHandle(targetTs);
+
+    // Debounced — jumping fires a new video request each time, so we
+    // wait for the drag to actually pause briefly before reloading,
+    // rather than firing a request on every pixel of mouse movement.
+    clearTimeout(window._scrubDebounce);
+    window._scrubDebounce = setTimeout(() => {
+      const base = visionBaseURL();
+      const video = document.getElementById('rec-video');
+      video.src = `${base}/api/${scrubCameraID}/start/${targetTs}/end/${scrubBlockEnd}/clip.mp4`;
+      video.play().catch(() => {});
+    }, 300);
+  }
+  ////
+
+  function closePlayer(e) {
+    if (e && e.target !== e.currentTarget) return;
+    const video = document.getElementById('rec-video');
+    video.pause();
+    video.src = '';
+    document.getElementById('video-player-overlay').style.display = 'none';
+  }
+
+  function startPage() { loadDevices(); loadSettings(); startLiveRefresh(); }
+  if (STANDALONE) standaloneInit(); else startPage();
+</script>
+</body>
+</html>
