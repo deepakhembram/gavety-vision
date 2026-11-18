@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -63,8 +64,12 @@ const (
 	visionCoreTokenFile = "/etc/gavety/vision_core_token"
 )
 
-// Override at build time:  -ldflags "-X main.visionCoreImage=youruser/gavety-vision-core:1.0.0"
+// Default image. The app catalog ("companion_image" on the vision entry) overrides it, and the
+// choice is remembered in visionCoreImageFile so it survives restarts. A build-time override
+// still works:  -ldflags "-X main.visionCoreImage=youruser/gavety-vision-core:1.0.0"
 var visionCoreImage = "deepakdipu/gavety-vision-core:latest"
+
+const visionCoreImageFile = "/etc/gavety/vision_core_image"
 
 var (
 	visionCoreMu    sync.Mutex
@@ -121,20 +126,74 @@ func ensureVisionCore() error {
 		"-v", "/var/run/docker.sock:/var/run/docker.sock",
 		"-v", "/etc/gavety:/etc/gavety",
 		"-v", HDD_ROOT + ":" + HDD_ROOT,
-		visionCoreImage,
+		visionCoreImageEffective(),
 	}
 	if out, err := exec.Command("docker", args...).CombinedOutput(); err != nil {
 		// Not present locally and pull failed, or a real run error: surface the docker message.
-		return fmt.Errorf("could not start Vision core (%s): %s", visionCoreImage, strings.TrimSpace(string(out)))
+		return fmt.Errorf("could not start Vision core (%s): %s", visionCoreImageEffective(), strings.TrimSpace(string(out)))
 	}
 	for i := 0; i < 30; i++ { // up to ~15s
 		if visionCoreHealthy() {
-			log.Printf("✅ Vision core container running (%s)", visionCoreImage)
+			log.Printf("✅ Vision core container running (%s)", visionCoreImageEffective())
 			return nil
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
 	return fmt.Errorf("Vision core container started but is not answering on %s", visionCoreAddr)
+}
+
+var visionImageRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._/-]{1,200}(:[A-Za-z0-9._-]{1,128})?(@sha256:[a-f0-9]{64})?$`)
+
+// visionCoreImageEffective returns the image to run: the one remembered from the catalog,
+// otherwise the built-in default.
+func visionCoreImageEffective() string {
+	if b, err := os.ReadFile(visionCoreImageFile); err == nil {
+		if img := strings.TrimSpace(string(b)); visionImageRe.MatchString(img) {
+			return img
+		}
+	}
+	return visionCoreImage
+}
+
+// visionApplyCatalogImage is called after every catalog refresh with the vision entry's
+// "companion_image". If it differs from what is running, the new image is pulled FIRST (a failed
+// pull changes nothing and is retried at the next refresh), then remembered, then the core is
+// recreated. Frigate and the recordings are not touched by a core restart.
+func visionApplyCatalogImage(img string) {
+	img = strings.TrimSpace(img)
+	if img == "" || !visionImageRe.MatchString(img) || img == visionCoreImageEffective() {
+		return
+	}
+	go func() {
+		installed := visionInstalled() // decide before touching anything
+		if !visionSwitchCoreImage(img) {
+			return
+		}
+		if installed {
+			if err := ensureVisionCore(); err != nil { // start it on the new image right away
+				log.Printf("⚠️ %v", err)
+			} else {
+				log.Printf("✅ Vision core updated to %s", img)
+			}
+		}
+	}()
+}
+
+// visionSwitchCoreImage pulls, remembers and retires the old core. Returns true if the switch happened.
+func visionSwitchCoreImage(img string) bool {
+	visionCoreMu.Lock()
+	defer visionCoreMu.Unlock()
+	if out, err := exec.Command("docker", "pull", img).CombinedOutput(); err != nil {
+		log.Printf("⚠️ Vision core update to %s failed (pull): %s", img, strings.TrimSpace(string(out)))
+		return false
+	}
+	os.MkdirAll(filepath.Dir(visionCoreImageFile), 0700)
+	if err := os.WriteFile(visionCoreImageFile, []byte(img), 0600); err != nil {
+		log.Printf("⚠️ could not remember Vision core image: %v", err)
+		return false
+	}
+	exec.Command("docker", "rm", "-f", visionCoreContainer).Run()
+	return true
 }
 
 // StartVisionStorageEnforcement keeps its old name because agent.go calls it at boot

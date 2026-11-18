@@ -108,3 +108,23 @@ NOT verified (no Docker daemon / network / Pi here):
 - Full `go build` of the *agent* with the shim (module proxy blocked here) — use step 2 on your machine as the real test.
 - Image names `gavety/…` are placeholders; set your Docker Hub namespace.
 - Windows path mapping in step 1 (see note there).
+
+## Updating the core without rebuilding the agent (app catalog)
+The Vision entry in `aws/app-catalog.json` can carry the core image:
+```json
+{ "id": "vision", ..., "companion_image": "deepakdipu/gavety-vision-core:0.1.0" }
+```
+Two small edits in the agent's `docker_manager.go`:
+```go
+// 1. in type CatalogApp
+CompanionImage string `json:"companion_image,omitempty"`
+
+// 2. in fetchAppCatalog(), right after appCatalogMu.Unlock()
+for _, a := range result.Apps {
+	if a.ID == "vision" { visionApplyCatalogImage(a.CompanionImage) }
+}
+```
+On each catalog refresh (hourly) the bridge pulls the new image **first**, remembers it in
+`/etc/gavety/vision_core_image`, and restarts only the core (Frigate and recordings are not touched).
+A failed pull changes nothing and is retried next hour. Without the field, the built-in default is used.
+The AWS backend needs no code change: it serves the catalog file as-is.
