@@ -64,7 +64,7 @@ const (
 )
 
 // Override at build time:  -ldflags "-X main.visionCoreImage=youruser/gavety-vision-core:1.0.0"
-var visionCoreImage = "gavety/gavety-vision-core:latest"
+var visionCoreImage = "deepakdipu/gavety-vision-core:latest"
 
 var (
 	visionCoreMu    sync.Mutex

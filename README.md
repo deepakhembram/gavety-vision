@@ -58,7 +58,7 @@ Expected: `Connection successful`, `device saved`, and after ~15 s `Gavety Visio
 3. Get the core image onto the Pi: pushed from CI (step 3) **or** `docker build` on the Pi, or
    `docker save | ssh | docker load` from your PC (use `--platform linux/arm64` when building on the PC).
 4. Build the agent with your image name:
-   `go build -ldflags "-X main.visionCoreImage=<namespace>/gavety-vision-core:<tag>"`
+   `go build -ldflags "-X main.visionCoreImage=deepakdipu/gavety-vision-core:<tag>"`
 5. Restart the agent. Open Gavety Vision in the dashboard: list / add / test / delete camera, change storage drive.
    `docker ps` should show **`gavety_vision_core`** and **`gavety_vision`**; the app list must still show only
    *one* Vision app (the core has no `gavety.managed` label on purpose).

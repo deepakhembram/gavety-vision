@@ -6,7 +6,7 @@
 # On a real Gavety box the AGENT starts the core itself (same image, same settings), you do not use this file.
 services:
   vision-core:
-    image: ${CORE_IMAGE:-gavety/gavety-vision-core:latest}
+    image: ${CORE_IMAGE:-deepakdipu/gavety-vision-core:latest}
     container_name: gavety_vision_core
     restart: unless-stopped
     network_mode: host                       # core talks to Frigate on 127.0.0.1:5150
@@ -23,7 +23,7 @@ services:
 
   ai-worker:
     profiles: ["ai"]
-    image: ${WORKER_IMAGE:-gavety/gavety-ai-worker:latest}
+    image: ${WORKER_IMAGE:-deepakdipu/gavety-ai-worker:latest}
     container_name: gavety_worker
     restart: unless-stopped
     ports: ["8800:8800"]
