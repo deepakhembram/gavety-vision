@@ -1,0 +1,40 @@
+# Run Gavety Vision without the agent (for testing on any machine with Docker).
+#   1. cp .env.example .env     and edit it
+#   2. docker compose up -d                 -> core only (cameras + Frigate + recording)
+#   3. docker compose --profile ai up -d    -> also the AI worker (needs an NVIDIA GPU)
+#
+# On a real Gavety box the AGENT starts the core itself (same image, same settings), you do not use this file.
+services:
+  vision-core:
+    image: ${CORE_IMAGE:-gavety/gavety-vision-core:latest}
+    container_name: gavety_vision_core
+    restart: unless-stopped
+    network_mode: host                       # core talks to Frigate on 127.0.0.1:5150
+    environment:
+      GAVETY_CORE_TOKEN: ${GAVETY_CORE_TOKEN:?set GAVETY_CORE_TOKEN in .env (16+ chars)}
+      GAVETY_CORE_ADDR: 127.0.0.1:5160
+      GAVETY_STATE_DIR: ${STATE_DIR:-/etc/gavety}
+      GAVETY_HDD_ROOT: ${HDD_ROOT:-/mnt/gavety_storage}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # SAME path inside and outside: Frigate is started via the host Docker daemon.
+      - ${STATE_DIR:-/etc/gavety}:${STATE_DIR:-/etc/gavety}
+      - ${HDD_ROOT:-/mnt/gavety_storage}:${HDD_ROOT:-/mnt/gavety_storage}
+
+  ai-worker:
+    profiles: ["ai"]
+    image: ${WORKER_IMAGE:-gavety/gavety-ai-worker:latest}
+    container_name: gavety_worker
+    restart: unless-stopped
+    ports: ["8800:8800"]
+    environment:
+      GAVETY_TOKEN: ${GAVETY_TOKEN:?set GAVETY_TOKEN in .env}
+      GAVETY_WORKER_ID: ${GAVETY_WORKER_ID:-gpu-1}
+    volumes:
+      - ./worker-config.json:/app/config.json:ro
+      - ./models:/app/models
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, count: all, capabilities: [gpu]}]

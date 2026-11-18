@@ -1,0 +1,9 @@
+{
+  "engines": [
+    {"name": "person", "type": "yolo", "model": "yolov8n.pt", "labels": ["person"], "conf": 0.4},
+    {"name": "fire",   "type": "yolo", "model": "models/fire_smoke.pt", "conf": 0.35,
+     "rename": {"Fire": "fire", "Smoke": "smoke"}},
+    {"name": "vlm",    "type": "ollama", "model": "qwen2.5vl:3b", "url": "http://host.docker.internal:11434",
+     "hazards": ["fire", "smoke"]}
+  ]
+}

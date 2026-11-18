@@ -1,0 +1,7 @@
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+requests>=2.31
+pillow>=10
+numpy>=1.26
+# ultralytics is installed separately (see Dockerfile) so the mock/broker/pull parts stay light

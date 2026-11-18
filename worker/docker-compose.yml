@@ -1,0 +1,19 @@
+# Direct-mode worker with NVIDIA GPU.  Put GAVETY_TOKEN=<long random string> in a .env file next to this.
+# Needs: Docker Desktop (WSL2 backend) + current NVIDIA driver on Windows.
+services:
+  gavety-worker:
+    build: .
+    container_name: gavety_worker
+    restart: unless-stopped
+    ports: ["8800:8800"]
+    environment:
+      GAVETY_TOKEN: ${GAVETY_TOKEN:?put GAVETY_TOKEN in .env}
+      GAVETY_WORKER_ID: ${GAVETY_WORKER_ID:-gpu-laptop}
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./models:/app/models          # put fire_smoke.pt here; yolov8n.pt is downloaded here on first run
+    extra_hosts: ["host.docker.internal:host-gateway"]   # reach Ollama running on the host
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, count: all, capabilities: [gpu]}]
