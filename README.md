@@ -129,34 +129,38 @@ On each catalog refresh (hourly) the bridge pulls the new image **first**, remem
 A failed pull changes nothing and is retried next hour. Without the field, the built-in default is used.
 The AWS backend needs no code change: it serves the catalog file as-is.
 
-## Hybrid: the same Vision page on the Pi **and** on any PC (standalone mode)
-The core can serve the Vision page itself, with its own password login. It is **off by default**:
-on a Gavety box nothing changes (the dashboard opens the page and the agent forwards commands).
+## Hybrid: the same Vision app on the Pi **and** on any PC (like Jellyfin)
+One app, two ways to reach it:
 
-| | Pi / Gavety box | Any PC with Docker |
+| | On a Gavety box (Pi) | On a PC with Docker |
 |---|---|---|
-| Who serves the page | the agent (dashboard popup) | the core container, `http://<pc>:5170` |
-| Login | dashboard login | own password (first-run setup code, or `GAVETY_UI_PASSWORD`) |
+| How you open it | log in to Gavety, then open Vision in the dashboard | open `http://localhost:5170` directly |
+| Login | the Gavety login (the agent already enforces it) | **none** by default; optional password |
+| Who serves the page | the agent (popup) | the core container itself |
 | Camera/Frigate | same core + Frigate containers | same core + Frigate containers |
+
+The standalone page is **off by default** (so nothing changes on a Gavety box). `vision.html` is one file used in both
+modes (`core/ui/vision.html`; copy it to the agent's `opt/vision.html`).
 
 **Run on a PC:**
 ```
 cd compose
 copy .env.standalone.example .env
 docker compose -f docker-compose.standalone.yml up -d
-docker logs gavety_vision_core        (find the setup code)
 ```
-Open `http://localhost:5170`, set a password, add a camera. Live view and recordings go through a read-only,
-allow-listed proxy to Frigate (Frigate's `/api/config` holds camera passwords and is never exposed).
+Open `http://localhost:5170`, add a camera. Done.
 
-Settings (environment): `GAVETY_UI_ADDR` (enables the page, e.g. `0.0.0.0:5170`), `GAVETY_UI_PASSWORD`,
-`GAVETY_FRIGATE_URL` (default `http://127.0.0.1:5150`; use `http://host.docker.internal:5150` on a PC).
+Settings (environment): `GAVETY_UI_ADDR` (turns the page on, e.g. `0.0.0.0:5170`), `GAVETY_UI_PASSWORD` (require a
+password), `GAVETY_FRIGATE_URL` (default `http://127.0.0.1:5150`; on a PC use `http://host.docker.internal:5150`),
+`GAVETY_UI_ALLOWED_HOSTS` (extra host names, e.g. behind a reverse proxy).
 
-Security notes: the page is plain HTTP, so use it on a trusted LAN or behind a VPN/reverse proxy; passwords are
-stored as PBKDF2-SHA256; sessions are HttpOnly + SameSite=Strict cookies; 5 failed logins/minute/address are
-blocked; the setup code stops a stranger on your LAN from claiming a fresh install.
-
-`vision.html` is ONE file used in both modes (`core/ui/vision.html`; copy it to the agent's `opt/vision.html`).
+**Open means open.** With no password, anyone who can reach the port can watch and change cameras. So the compose
+file publishes it on `127.0.0.1` (this PC only) by default; set `UI_BIND=0.0.0.0` only on a network you trust, and set
+`GAVETY_UI_PASSWORD` if others can reach it. Built-in protections even in open mode: browsers on other websites cannot
+drive it (custom-header check + host-name check against DNS rebinding), and Frigate's own API (`/api/config` holds the
+camera passwords) is never exposed: live view and recordings go through a read-only allow-listed proxy.
+Plain HTTP: use a trusted LAN/VPN or put HTTPS in front. Note that Frigate's own port 5150 is published by the core,
+exactly as on the Pi, and Frigate has no login of its own.
 
 **Windows note (not verified on a real Docker Desktop):** `DATA_DIR` (default `/srv/gavety`) is a path inside
 Docker's Linux VM, so recordings live in Docker's disk image, not on `C:`. Check free space for long retention.

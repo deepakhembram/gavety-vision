@@ -1,15 +1,19 @@
 package main
 
 // ui.go - OPTIONAL standalone web UI, so Gavety Vision works on any PC with Docker (no Gavety agent).
+// Think of it like Jellyfin: on a Gavety box you log in to Gavety first and open the app through it;
+// on a PC's Docker you open the app directly.
 //
 // Off by default. Enable with GAVETY_UI_ADDR (for example ":5170"). On a Gavety box (Pi) leave it off:
-// the dashboard opens the same vision.html as a popup and talks to the core through the agent.
+// the dashboard (already behind the Gavety login) opens the same vision.html as a popup and talks to
+// the core through the agent.
+//
+// Access: OPEN by default (no login). Set GAVETY_UI_PASSWORD to require a password.
 //
 // What it serves:
 //   GET  /                 the Vision page (same file the dashboard uses; it detects standalone mode)
-//   GET  /ui/state         {configured, authed}
-//   POST /ui/setup         first run: set the password (needs the setup code printed in the log)
-//   POST /ui/login|logout  session cookie (HttpOnly, SameSite=Strict, HMAC-signed)
+//   GET  /ui/state         {open, authed}
+//   POST /ui/login|logout  only used when a password is set (HttpOnly, SameSite=Strict, HMAC-signed cookie)
 //   POST /ui/cmd           the same commands the dashboard sends (vision_list_devices, ...)
 //   GET  /frigate/...      read-only, allow-listed proxy to Frigate (live snapshots, recordings, clips)
 //
@@ -44,50 +48,19 @@ import (
 //go:embed ui/vision.html
 var visionPageHTML []byte
 
-var (
-	frigateBaseURL = "http://127.0.0.1:5150" // GAVETY_FRIGATE_URL; on Docker Desktop use http://host.docker.internal:5150
-	pbkdf2Iters    = 150000                  // lowered in tests
-)
+var frigateBaseURL = "http://127.0.0.1:5150" // GAVETY_FRIGATE_URL; on Docker Desktop use http://host.docker.internal:5150
 
 const (
 	uiCookie     = "gv_session"
 	uiSessionTTL = 7 * 24 * time.Hour
-	uiMinPassLen = 8
 )
 
-func uiAuthFile() string   { return filepath.Join(stateDir, "vision_ui_auth.json") }
 func uiSecretFile() string { return filepath.Join(stateDir, "vision_ui_secret") }
 
-// ─── password hashing (PBKDF2-HMAC-SHA256, stdlib only) ───
-
-func pbkdf2SHA256(password, salt []byte, iter int) []byte {
-	prf := hmac.New(sha256.New, password)
-	prf.Write(salt)
-	prf.Write([]byte{0, 0, 0, 1})
-	u := prf.Sum(nil)
-	out := append([]byte(nil), u...)
-	for i := 1; i < iter; i++ {
-		prf.Reset()
-		prf.Write(u)
-		u = prf.Sum(nil)
-		for j := range out {
-			out[j] ^= u[j]
-		}
-	}
-	return out
-}
-
-type uiAuthRecord struct {
-	Salt  string `json:"salt"`
-	Hash  string `json:"hash"`
-	Iters int    `json:"iters"`
-}
-
 type uiServer struct {
-	apiToken  string // internal bearer token used to call the same handlers as the loopback API
-	api       http.Handler
-	envPass   string // GAVETY_UI_PASSWORD (takes precedence; no setup step)
-	setupCode string // required for first-run setup when no password exists
+	apiToken string // internal bearer token used to call the same handlers as the loopback API
+	api      http.Handler
+	envPass  string // GAVETY_UI_PASSWORD; empty = open access (no login)
 
 	mu      sync.Mutex
 	secret  []byte
@@ -119,11 +92,8 @@ func newUIServer(apiToken string) (*uiServer, error) {
 			http.Error(w, "Vision engine not reachable", http.StatusBadGateway)
 		},
 	}
-	if s.envPass == "" && !s.configured() {
-		b := make([]byte, 4)
-		rand.Read(b)
-		s.setupCode = hex.EncodeToString(b)
-		log.Printf("🔑 Vision UI first-run setup code: %s  (enter it in the browser to set your password)", s.setupCode)
+	if s.envPass == "" {
+		log.Printf("ℹ️  Vision UI is OPEN (no login). Anyone who can reach the port can view and change cameras. Set GAVETY_UI_PASSWORD to require a password.")
 	}
 	return s, nil
 }
@@ -143,41 +113,14 @@ func (s *uiServer) loadOrCreateSecret() ([]byte, error) {
 	return b, nil
 }
 
-func (s *uiServer) configured() bool {
-	if s.envPass != "" {
-		return true
-	}
-	_, err := os.Stat(uiAuthFile())
-	return err == nil
-}
+func (s *uiServer) open() bool { return s.envPass == "" }
 
 func (s *uiServer) checkPassword(pw string) bool {
-	if s.envPass != "" {
-		return subtle.ConstantTimeCompare([]byte(pw), []byte(s.envPass)) == 1
-	}
-	data, err := os.ReadFile(uiAuthFile())
-	if err != nil {
-		return false
-	}
-	var rec uiAuthRecord
-	if json.Unmarshal(data, &rec) != nil {
-		return false
-	}
-	salt, _ := hex.DecodeString(rec.Salt)
-	want, _ := hex.DecodeString(rec.Hash)
-	got := pbkdf2SHA256([]byte(pw), salt, rec.Iters)
-	return subtle.ConstantTimeCompare(got, want) == 1
+	return s.envPass != "" && subtle.ConstantTimeCompare([]byte(pw), []byte(s.envPass)) == 1
 }
 
-func (s *uiServer) savePassword(pw string) error {
-	salt := make([]byte, 16)
-	rand.Read(salt)
-	rec := uiAuthRecord{Salt: hex.EncodeToString(salt), Iters: pbkdf2Iters,
-		Hash: hex.EncodeToString(pbkdf2SHA256([]byte(pw), salt, pbkdf2Iters))}
-	b, _ := json.Marshal(rec)
-	os.MkdirAll(stateDir, 0700)
-	return os.WriteFile(uiAuthFile(), b, 0600)
-}
+// authorized: always true in open mode, otherwise needs a valid session cookie.
+func (s *uiServer) authorized(r *http.Request) bool { return s.open() || s.validSession(r) }
 
 // ─── sessions ───
 
@@ -251,13 +194,47 @@ func (s *uiServer) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.page)
 	mux.HandleFunc("GET /ui/state", s.state)
-	mux.HandleFunc("POST /ui/setup", s.setup)
 	mux.HandleFunc("POST /ui/login", s.login)
 	mux.HandleFunc("POST /ui/logout", s.logout)
 	mux.HandleFunc("POST /ui/cmd", s.cmd)
 	mux.HandleFunc("GET /frigate/", s.frigateProxy)
 	mux.HandleFunc("HEAD /frigate/", s.frigateProxy)
-	return secureHeaders(mux)
+	return secureHeaders(s.hostGuard(mux))
+}
+
+// hostGuard blocks DNS-rebinding: a malicious website can point its own domain at this PC's address and
+// then talk to an open Vision page as "same origin". Browsers still send that website's name in the Host
+// header, so only IP addresses, localhost, single-label names (a PC called "mypc") and *.local are accepted.
+// Add more with GAVETY_UI_ALLOWED_HOSTS=name1,name2 (for example when behind a reverse proxy).
+func (s *uiServer) hostGuard(next http.Handler) http.Handler {
+	extra := map[string]bool{}
+	for _, h := range strings.Split(os.Getenv("GAVETY_UI_ALLOWED_HOSTS"), ",") {
+		if h = strings.ToLower(strings.TrimSpace(h)); h != "" {
+			extra[h] = true
+		}
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !hostAllowed(r.Host, extra) {
+			http.Error(w, "host not allowed (set GAVETY_UI_ALLOWED_HOSTS)", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func hostAllowed(hostport string, extra map[string]bool) bool {
+	h := hostport
+	if host, _, err := net.SplitHostPort(hostport); err == nil {
+		h = host
+	}
+	h = strings.ToLower(strings.Trim(h, "[]"))
+	if h == "" {
+		return false
+	}
+	if net.ParseIP(h) != nil || h == "localhost" || strings.HasSuffix(h, ".local") || !strings.Contains(h, ".") || extra[h] {
+		return true
+	}
+	return false
 }
 
 func secureHeaders(next http.Handler) http.Handler {
@@ -278,43 +255,11 @@ func (s *uiServer) page(w http.ResponseWriter, r *http.Request) {
 
 func (s *uiServer) state(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, map[string]interface{}{"configured": s.configured(), "authed": s.validSession(r)})
+	writeJSON(w, map[string]interface{}{"open": s.open(), "authed": s.authorized(r)})
 }
 
 func readSmallJSON(r *http.Request, v interface{}) error {
 	return json.NewDecoder(http.MaxBytesReader(nil, r.Body, 64<<10)).Decode(v)
-}
-
-func (s *uiServer) setup(w http.ResponseWriter, r *http.Request) {
-	var in struct{ Password, Code string }
-	if readSmallJSON(r, &in) != nil {
-		writeJSON(w, errBody("invalid request"))
-		return
-	}
-	ip := clientIP(r)
-	if s.tooManyFails(ip) {
-		http.Error(w, "too many attempts, wait a minute", http.StatusTooManyRequests)
-		return
-	}
-	if s.configured() {
-		writeJSON(w, errBody("already set up — please log in"))
-		return
-	}
-	if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(in.Code)), []byte(s.setupCode)) != 1 {
-		s.noteFail(ip)
-		writeJSON(w, errBody("wrong setup code (see the container log)"))
-		return
-	}
-	if len(in.Password) < uiMinPassLen {
-		writeJSON(w, errBody(fmt.Sprintf("password must be at least %d characters", uiMinPassLen)))
-		return
-	}
-	if err := s.savePassword(in.Password); err != nil {
-		writeJSON(w, errBody(err.Error()))
-		return
-	}
-	s.setCookie(w, r)
-	writeJSON(w, map[string]interface{}{"status": "ok"})
 }
 
 func (s *uiServer) login(w http.ResponseWriter, r *http.Request) {
@@ -328,7 +273,7 @@ func (s *uiServer) login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "too many attempts, wait a minute", http.StatusTooManyRequests)
 		return
 	}
-	if !s.configured() || !s.checkPassword(in.Password) {
+	if !s.checkPassword(in.Password) {
 		s.noteFail(ip)
 		writeJSON(w, errBody("wrong password"))
 		return
@@ -345,7 +290,7 @@ func (s *uiServer) logout(w http.ResponseWriter, r *http.Request) {
 // requireAuth also demands a custom header on POSTs: browsers will not send it cross-site without a
 // CORS preflight, which this server never approves (belt and braces on top of SameSite=Strict).
 func (s *uiServer) requireAuth(w http.ResponseWriter, r *http.Request) bool {
-	if !s.validSession(r) {
+	if !s.authorized(r) {
 		http.Error(w, "login required", http.StatusUnauthorized)
 		return false
 	}

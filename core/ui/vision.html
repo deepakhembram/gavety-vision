@@ -112,15 +112,10 @@
 </head>
 <body>
 
-  <!-- Standalone mode only: sign-in / first-run setup -->
+  <!-- Standalone mode only, and only when a password is set (GAVETY_UI_PASSWORD) -->
   <div id="sa-login" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:50;align-items:center;justify-content:center;padding:20px;">
     <form class="panel" style="width:100%;max-width:360px;margin:0;" onsubmit="standaloneLogin(event)">
-      <div class="panel-title" id="sa-title">Sign in</div>
-      <div class="field-hint" id="sa-hint" style="margin-bottom:12px;"></div>
-      <div id="sa-code-row" style="display:none;margin-bottom:12px;">
-        <label class="field-label">Setup code</label>
-        <input type="text" id="sa-code" autocomplete="off">
-      </div>
+      <div class="panel-title" id="sa-title">Sign in to Gavety Vision</div>
       <label class="field-label">Password</label>
       <input type="password" id="sa-pass" autocomplete="current-password" style="margin-bottom:14px;">
       <button class="btn btn-primary" type="submit">Continue</button>
@@ -346,23 +341,18 @@
     }
   }
 
+  // Standalone is OPEN (no login) unless the container was started with GAVETY_UI_PASSWORD.
   async function standaloneInit() {
-    const logout = document.getElementById('sa-logout');
-    if (logout) logout.style.display = 'inline-block';
-    let st = { configured: true, authed: false };
+    let st = { open: false, authed: false };
     try { st = await (await fetch('/ui/state', { credentials: 'same-origin' })).json(); } catch (e) {}
+    const logout = document.getElementById('sa-logout');
+    if (logout && !st.open) logout.style.display = 'inline-block';
     if (st.authed) { startPage(); return; }
-    showLogin(st.configured);
+    showLogin();
   }
 
-  let loginConfigured = true;
-  function showLogin(configured) {
-    if (typeof configured === 'boolean') loginConfigured = configured;
+  function showLogin() {
     document.getElementById('sa-login').style.display = 'flex';
-    document.getElementById('sa-code-row').style.display = loginConfigured ? 'none' : 'block';
-    document.getElementById('sa-title').textContent = loginConfigured ? 'Sign in to Gavety Vision' : 'Set up Gavety Vision';
-    document.getElementById('sa-hint').textContent = loginConfigured ? '' :
-      'First run: enter the setup code shown in the container log (docker logs gavety_vision_core) and choose a password (8+ characters).';
     document.getElementById('sa-pass').focus();
   }
 
@@ -370,8 +360,8 @@
     ev.preventDefault();
     const msg = document.getElementById('sa-msg');
     msg.textContent = '';
-    const body = { password: document.getElementById('sa-pass').value, code: document.getElementById('sa-code').value };
-    const r = await fetch(loginConfigured ? '/ui/login' : '/ui/setup', {
+    const body = { password: document.getElementById('sa-pass').value };
+    const r = await fetch('/ui/login', {
       method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
     if (r.status === 429) { msg.textContent = 'Too many attempts — wait a minute.'; return; }
